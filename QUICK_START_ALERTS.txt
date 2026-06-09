@@ -1,0 +1,178 @@
+================================================================================
+                    ALERT MANAGEMENT — QUICK START CARD
+================================================================================
+
+YOUR NEW WORKFLOW:
+
+Step 1: Alert Detected by Agent
+└─ Automatically saved to database with all context
+
+Step 2: You Review Alert (Discord notification)
+└─ Decide: Take it or skip it?
+
+Step 3: If You Take It
+└─ $ python -m src.trading.fill_trade --alert-id=42 --take
+   └─ Auto-calculates SL/TP based on confluence score
+
+Step 4: Adjust SL/TP as Trade Develops (Optional)
+└─ $ python -m src.trading.fill_trade --alert-id=42 --update-sl=30455.50
+
+Step 5: Record Exit When Trade Closes
+└─ $ python -m src.trading.fill_trade --alert-id=42 --exit-price=30475.00
+   └─ P&L auto-calculated, marked as FILLED
+
+Step 6: Review All Results
+└─ $ python -m src.trading.fill_trade --list-pending
+   └─ Shows: NOT TAKEN (skipped) | TAKEN (with SL/TP) | FILLED (with P&L)
+
+================================================================================
+
+ONE-LINER COMMANDS:
+
+View all alerts today:
+  python -m src.trading.fill_trade --list-pending
+
+Mark alert as taken (auto SL/TP):
+  python -m src.trading.fill_trade --alert-id=42 --take
+
+Mark with custom SL/TP:
+  python -m src.trading.fill_trade --alert-id=42 --take --stop-loss=30420 --take-profit=30480
+
+Update SL (e.g., move to breakeven):
+  python -m src.trading.fill_trade --alert-id=42 --update-sl=30450.50
+
+Update TP (e.g., tighten profits):
+  python -m src.trading.fill_trade --alert-id=42 --update-tp=30490
+
+Record exit (close trade):
+  python -m src.trading.fill_trade --alert-id=42 --exit-price=30475.00
+
+Record exit with notes:
+  python -m src.trading.fill_trade --alert-id=42 --exit-price=30475.00 --notes="Hit TP"
+
+================================================================================
+
+AUTO SL/TP EXAMPLES:
+
+Score 4.0  (low confidence):   SL=30440.50, TP=30470.50
+Score 6.0  (medium):           SL=30435.50, TP=30480.50
+Score 9.5  (high):             SL=30426.75, TP=30498.00
+Score 12.0 (very high):        SL=30420.50, TP=30510.50
+
+Logic: Higher score = wider TP (let winners run) + tighter SL (stop early if wrong)
+
+================================================================================
+
+REAL EXAMPLE SESSION:
+
+10:30 — Agent sends Discord alert
+        "LONG sweep @ 30450.50, Score 9.5, Assessment: TAKE"
+
+10:35 — You review and take it
+        $ python -m src.trading.fill_trade --alert-id=42 --take
+        Output: Alert marked as TAKEN | SL: 30426.75 | TP: 30498.00
+
+11:00 — Price moves 10 pts in your favor, move SL to breakeven+5
+        $ python -m src.trading.fill_trade --alert-id=42 --update-sl=30455.50
+
+14:00 — Trade hits TP
+        $ python -m src.trading.fill_trade --alert-id=42 --exit-price=30498.00
+        Output: Trade recorded: P&L=$950.00 (+0.155%), result=WIN
+
+14:05 — Check results
+        $ python -m src.trading.fill_trade --list-pending
+        Output shows: FILLED | P&L: +$950.00 | WIN
+
+================================================================================
+
+DATABASE UPDATES:
+
+When you run --take:
+  alerts[42] = {
+    taken: 1
+    taken_at: 2026-06-05 10:35:22
+    stop_loss: 30426.75
+    take_profit: 30498.00
+  }
+
+When you update SL:
+  alerts[42].stop_loss = 30455.50
+
+When you record exit:
+  trades[42] = {
+    entry_price: 30450.50
+    exit_price: 30498.00
+    pnl: 950.00
+    result: WIN
+  }
+  alerts[42].trade_status = FILLED
+
+================================================================================
+
+KEY BENEFITS:
+
+✓ Discipline — Review every alert (take or skip)
+✓ Smart Risk Management — Auto SL/TP scales to confidence
+✓ Decision Tracking — Know what you took and when
+✓ Flexibility — Adjust SL/TP anytime during trade
+✓ Clear Results — See which setups work best
+✓ No Manual Calc — P&L calculated automatically
+✓ Audit Trail — Every decision timestamped in database
+
+================================================================================
+
+COMMON MISTAKES TO AVOID:
+
+❌ Skip recording fills — they'll stay as PENDING forever
+✓ Record all fills, even if late in the day
+
+❌ Overthink SL/TP — use auto values as starting point
+✓ Start with auto, adjust if needed
+
+❌ Don't mark alerts as taken — can't analyze later
+✓ Mark all alerts you trade (even if you exit the same day)
+
+❌ Use wrong alert ID — double check with --list-pending
+✓ Verify alert ID before marking or filling
+
+================================================================================
+
+DOCUMENTATION:
+
+Full Guide:          docs/ALERT_MANAGEMENT_GUIDE.md
+Quick Reference:     docs/ALERT_QUICK_REFERENCE.md
+Summary:             ALERT_SYSTEM_UPDATE.md
+Before/After:        BEFORE_AFTER_COMPARISON.md
+
+================================================================================
+
+PYTHON API (if coding):
+
+from src.trading.trade_journal import TradeJournal
+journal = TradeJournal()
+
+# Mark as taken
+journal.mark_as_taken(alert_id=42)
+
+# Mark with custom SL/TP
+journal.mark_as_taken(42, stop_loss=30420, take_profit=30480)
+
+# Update SL/TP
+journal.update_sl_tp(42, stop_loss=30430)
+
+# Auto-calculate
+sl, tp = journal.calculate_sl_tp(30450.50, "LONG", 9.5, atr=20)
+
+================================================================================
+
+READY TO START? 
+
+1. Print this card
+2. Run: python -m src.trading.fill_trade --list-pending
+3. See an alert you like? Mark it: python -m src.trading.fill_trade --alert-id=42 --take
+4. When it exits, record it: python -m src.trading.fill_trade --alert-id=42 --exit-price=30475.00
+5. Review your results: python -m src.trading.fill_trade --list-pending
+
+That's it! Your trading is now fully tracked. 🎯
+
+================================================================================

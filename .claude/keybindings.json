@@ -1,0 +1,24 @@
+{
+  "keybindings": [
+    {
+      "key": "ctrl+shift+a",
+      "command": "run-agent",
+      "description": "Launch MNQ agent"
+    },
+    {
+      "key": "ctrl+shift+t",
+      "command": "test-discord",
+      "description": "Test Discord webhook"
+    },
+    {
+      "key": "ctrl+shift+r",
+      "command": "view-daily-report",
+      "description": "Open today's alert report"
+    },
+    {
+      "key": "ctrl+shift+d",
+      "command": "analyze-alerts",
+      "description": "Analyze today's alerts"
+    }
+  ]
+}

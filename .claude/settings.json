@@ -1,0 +1,58 @@
+{
+  "projectName": "MNQ Trading Agent v1",
+  "projectDescription": "Multi-timeframe liquidity sweep detector for Micro E-mini Nasdaq-100 futures with AI probability assessment and automatic exit tracking",
+
+  "ai": {
+    "model": "claude-sonnet-4-5",
+    "temperature": 0.7
+  },
+
+  "codebase": {
+    "language": "python",
+    "framework": "custom",
+    "testFramework": "pytest",
+    "linter": "pylint"
+  },
+
+  "automation": {
+    "runTests": {
+      "command": "pytest tests/ -v",
+      "onSave": false,
+      "schedule": "manual"
+    },
+    "formatCode": {
+      "enabled": false
+    }
+  },
+
+  "shortcuts": {
+    "runAgent": "ctrl+shift+a",
+    "testAlerts": "ctrl+shift+t",
+    "viewReport": "ctrl+shift+r",
+    "analyzeTrades": "ctrl+shift+d"
+  },
+
+  "contextFiles": [
+    "CLAUDE.md",
+    "README.md",
+    ".env.example",
+    "src/data/config.py"
+  ],
+
+  "workspace": {
+    "openFolders": ["src", "tests", "docs"],
+    "excludePatterns": [
+      "node_modules",
+      "__pycache__",
+      "*.pyc",
+      ".pytest_cache",
+      "trades.db",
+      ".env"
+    ]
+  },
+
+  "skills": {
+    "enabled": true,
+    "directory": ".claude/skills"
+  }
+}

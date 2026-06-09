@@ -1,0 +1,183 @@
+================================================================================
+                     EXIT TYPE TRACKING — QUICK GUIDE
+================================================================================
+
+WHAT IS EXIT TYPE TRACKING?
+
+When you record a trade exit, the system automatically determines HOW it exited:
+
+  TP_HIT      — Hit take profit (strategy worked!)
+  SL_HIT      — Hit stop loss (setup was wrong)
+  MANUAL_EXIT — Exited between SL and TP (your discretionary choice)
+  BREAK_EVEN  — Exited at entry (no loss, no gain)
+
+WHY DOES IT MATTER?
+
+Before: "I made +$950, that's good!" (But did my strategy work?)
+After:  "I made +$950 [TP_HIT], score 9.5 is working!" (Now you know!)
+
+================================================================================
+
+ONE COMMAND: VIEW EXIT ANALYSIS
+
+  python -m src.trading.fill_trade --exit-analysis
+
+This shows: How many trades hit TP vs SL by confluence score band
+
+Example output:
+  Band       Total    TP Hit    SL Hit    Manual       BE    TP Rate
+  ────────────────────────────────────────────────────────────────
+  10+            5         4         0         1        0      80.0%
+  8-10           6         3         2         1        0      50.0%
+  5-8            4         1         2         1        0      25.0%
+  <5             3         0         3         0        0       0.0%
+
+WHAT THIS MEANS:
+  - Score 10+: 80% hit TP (keep trading these!)
+  - Score 8-10: 50% hit TP (OK, but could be better)
+  - Score 5-8: 25% hit TP (too loose, stop trading)
+  - Score <5: 0% hit TP (never trade these!)
+
+================================================================================
+
+HOW IT WORKS
+
+When you record a fill:
+
+  $ python -m src.trading.fill_trade --alert-id=42 --exit-price=30498.00
+
+System automatically:
+  1. Fetches entry: 30450.50
+  2. Fetches SL: 30426.75 (from when you marked it taken)
+  3. Fetches TP: 30498.00 (from when you marked it taken)
+  4. Compares exit (30498.00) to TP (30498.00)
+  5. Stores: exit_type = "TP_HIT"
+
+Result shows in filled trades:
+
+  $ python -m src.trading.fill_trade --list-pending
+  
+  ID   42 | LONG  | 30450.50 → 30498.00 | +$950 ✓ 📍 TP_HIT
+
+================================================================================
+
+EXIT TYPE DEFINITIONS
+
+TP_HIT:
+  LONG:  Exit price >= TP
+  SHORT: Exit price <= TP
+  Meaning: Your strategy worked. This setup was correct.
+
+SL_HIT:
+  LONG:  Exit price <= SL
+  SHORT: Exit price >= SL
+  Meaning: The setup was wrong. Your filters need improvement.
+
+MANUAL_EXIT:
+  Exit price is between SL and TP
+  Meaning: You exited for your own reasons (took partial profit, cut loss early)
+
+BREAK_EVEN:
+  Exit price within 0.25 pts of entry
+  Meaning: No profit, no loss. Setup didn't develop into a move.
+
+================================================================================
+
+REAL WORKFLOW EXAMPLE
+
+Day:
+  10:30 - Alert #42 detected, Score 9.5
+  10:35 - Mark as taken: --alert-id=42 --take
+          → Sets SL: 30426.75, TP: 30498.00
+  14:00 - Trade hits TP, record exit: --alert-id=42 --exit-price=30498.00
+          → System records: exit_type = "TP_HIT"
+
+EOD:
+  $ python -m src.trading.fill_trade --exit-analysis
+  
+  Shows: Score 9.5 band hit TP 80% (strategy is working!)
+
+NEXT DAY: Trade more 9+ setups, skip <8 setups
+
+================================================================================
+
+WEEKLY ANALYSIS CHECKLIST
+
+Every Friday, run:
+  python -m src.trading.fill_trade --exit-analysis
+
+Ask yourself:
+  1. Which score bands hit TP most? (That's your edge)
+  2. Which bands always hit SL? (Stop trading those)
+  3. Is TP hit rate 50%+? (If not, widen TP targets)
+  4. Is SL hit rate 40%-? (If not, tighten SL)
+  5. Too many MANUAL_EXIT? (Stick to plan, trust SL/TP)
+
+Adjust strategy based on patterns:
+  - High TP rate for 10+ → Trade more 10+ setups
+  - Low TP rate for <8 → Stop trading <8 setups
+  - Too tight TP → Widen from 1.5x to 2.0x ATR
+  - Too loose SL → Tighten from 0.75x to 0.5x ATR
+
+================================================================================
+
+QUICK COMMANDS
+
+Record a fill (auto-detects exit type):
+  python -m src.trading.fill_trade --alert-id=42 --exit-price=30498.00
+
+View all trades with exit type shown:
+  python -m src.trading.fill_trade --list-pending
+
+View exit type analysis for today:
+  python -m src.trading.fill_trade --exit-analysis
+
+View exit type analysis for specific date:
+  python -m src.trading.fill_trade --exit-analysis "2026-06-05"
+
+================================================================================
+
+PYTHON API
+
+from src.trading.trade_journal import TradeJournal
+journal = TradeJournal()
+
+# Get exit type stats for a date
+stats = journal.get_exit_type_stats("2026-06-05")
+
+# Result:
+# {
+#     "10+": {
+#         "total": 5,
+#         "tp_hit": 4,
+#         "sl_hit": 0,
+#         "manual_exit": 1,
+#         "tp_hit_rate": 80.0
+#     }
+# }
+
+for band, data in stats.items():
+    print(f"Score {band}: {data['tp_hit_rate']}% TP hit rate")
+
+================================================================================
+
+KEY INSIGHT
+
+Exit type tracking reveals your REAL trading edge:
+
+❌ DON'T FOCUS ON: "I made +$950 today"
+✓ DO FOCUS ON: "Score 9.5 hit TP 80% this week"
+
+The first is luck. The second is a system you can repeat.
+
+Use exit types weekly to:
+  - Prove which confluence scores work
+  - Prove which timeframes work
+  - Prove which directions work (LONG vs SHORT)
+  - Prove your SL/TP settings are correct
+
+Then trade only the proven setups!
+
+================================================================================
+
+That's it! Run the analysis weekly and adjust based on data. Simple!

@@ -32,6 +32,11 @@ from src.levels.levels_analyzer import parse_levels_from_file
 from src.trading.trade_journal import TradeJournal
 from src.reporting.report_scheduler import check_and_send_report
 
+# MVC Imports
+from src.controllers.alert_controller import AlertController
+from src.database.alert_db import AlertDatabase
+from src.views.discord_view import DiscordView
+
 # ── Logging ───────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +49,13 @@ TZ  = pytz.timezone(TIMEZONE)
 # ── Global state ──────────────────────────────────────────
 fetcher     = MultiTimeframeFetcher()
 spy_fetcher = SpyFetcher()
-journal     = TradeJournal()    # Trade journal for alert logging
+journal     = TradeJournal()    # Trade journal for alert logging (kept for compatibility)
+
+# MVC Components
+alert_db    = AlertDatabase()
+alert_ctrl  = AlertController(alert_db)
+discord_view = DiscordView()
+
 _last_alert: dict = {}     # {direction: datetime} — cooldown tracker
 
 
@@ -268,9 +279,9 @@ def on_bar_close(tf: str, bars: list):
     if success:
         _record_alert(direction)
 
-        # Log alert to trade journal
+        # Create and save alert using MVC
         try:
-            alert_id = journal.log_alert({
+            alert = alert_ctrl.create_alert({
                 "timestamp": datetime.now(TZ),
                 "direction": direction,
                 "current_price": ctx.get("current_price", 0),
@@ -290,9 +301,9 @@ def on_bar_close(tf: str, bars: list):
                 "stop_loss": ctx.get("sl_estimate", 0),
                 "take_profit": ctx.get("tp_estimate", 0),
             })
-            log.info(f"Alert logged to journal: id={alert_id}")
+            log.info(f"Alert created via MVC: {alert}")
         except Exception as e:
-            log.error(f"Failed to log alert to journal: {e}")
+            log.error(f"Failed to create alert via MVC: {e}")
 
         log.info("Pipeline complete — Discord alert sent.")
     else:

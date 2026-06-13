@@ -27,6 +27,7 @@
 
   "shortcuts": {
     "runAgent": "ctrl+shift+a",
+    "runMonitor": "ctrl+shift+m",
     "testAlerts": "ctrl+shift+t",
     "viewReport": "ctrl+shift+r",
     "analyzeTrades": "ctrl+shift+d"

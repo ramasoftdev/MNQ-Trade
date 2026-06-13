@@ -17,13 +17,13 @@ from src.data.config import (
     VOLUME_AVG_BARS, VOL_SPIKE_MULT, POC_PROXIMITY_PTS,
     VWAP_PROXIMITY_PTS, TICK_SIZE, TIMEZONE,
     RTH_START, RTH_END, GLOBEX_OPEN_HOUR, GLOBEX_CLOSE_HOUR,
-    NUM_SESSIONS, POC_SESSIONS, EMA_PERIODS, MIN_TF_ALIGNMENT,
-    TIMEFRAMES,
+    NUM_SESSIONS, POC_SESSIONS, SMA_PERIODS, MIN_TF_ALIGNMENT,
+    TIMEFRAMES, DAILY_SMA_MAGNET_PROXIMITY,
 )
 from src.levels.levels_analyzer import analyze_levels, get_nearest_levels
 
 TZ = pytz.timezone(TIMEZONE)
-TF_LABEL = {"1h": "1-Hour", "30m": "30-Min", "15m": "15-Min", "5m": "5-Min"}
+TF_LABEL = {"1d": "Daily", "15m": "15-Min", "5m": "5-Min"}
 
 
 # ── Session helpers ───────────────────────────────────────
@@ -67,32 +67,231 @@ def get_rth_session_date(ts: datetime) -> str:
 
 # ── EMA / Trend ───────────────────────────────────────────
 
-def compute_ema(values: list, period: int) -> float:
-    if not values:
+def compute_sma(values: list, period: int) -> float:
+    """Compute Simple Moving Average."""
+    if not values or len(values) < period:
         return 0.0
-    if len(values) < period:
-        period = len(values)
-    k   = 2 / (period + 1)
-    ema = sum(values[:period]) / period
-    for v in values[period:]:
-        ema = v * k + ema * (1 - k)
-    return ema
+    return sum(values[-period:]) / period
+
+
+def compute_sma_list(values: list, periods: list) -> dict:
+    """
+    Compute multiple SMAs at once.
+
+    Args:
+        values: List of prices
+        periods: List of SMA periods (e.g., [5, 20, 50, 100, 200])
+
+    Returns:
+        {"sma_5": 123.45, "sma_20": 124.30, ...}
+    """
+    result = {}
+    for period in periods:
+        sma = compute_sma(values, period)
+        result[f"sma_{period}"] = round(sma, 2) if sma > 0 else 0
+    return result
+
+
+def score_breakout_strength(distance: float) -> float:
+    """
+    Score SMA breakout strength based on distance.
+
+    Args:
+        distance: How far price is from the SMA (positive = above, negative = below)
+
+    Returns:
+        Score: 0.0-1.5 based on breakout strength
+    """
+    abs_dist = abs(distance)
+
+    if abs_dist >= 10:
+        return 1.5  # Strong breakout
+    elif abs_dist >= 5:
+        return 1.0  # Solid breakout
+    elif abs_dist >= 1:
+        return 0.5  # Just crossed
+    else:
+        return 0.0  # Too close to SMA
+
+
+def detect_sma_breakouts(bars: list, smas: dict, direction: str) -> dict:
+    """
+    Detect bullish/bearish breakouts through SMA levels.
+
+    Checks if price has broken above (for LONG) or below (for SHORT)
+    moving averages with strength scoring.
+
+    Args:
+        bars: List of bar data
+        smas: Dict of SMA values {"sma_5": X, "sma_20": Y, ...}
+        direction: "long" or "short"
+
+    Returns:
+        {
+            "breakout_score": 0.0-4.5,  # Sum of all SMA breakouts
+            "breakouts": [
+                {"period": 5, "sma_price": X, "distance": Y, "score": 1.0, "type": "bullish"},
+                ...
+            ]
+        }
+    """
+    if not bars or not smas:
+        return {
+            "breakout_score": 0.0,
+            "breakouts": [],
+        }
+
+    current_price = bars[-1]["close"] if bars else 0
+    breakouts = []
+    total_score = 0.0
+
+    for sma_key, sma_price in smas.items():
+        if sma_price <= 0:
+            continue
+
+        # Extract period from key (e.g., "sma_50" -> 50)
+        try:
+            period = int(sma_key.split("_")[1])
+        except:
+            continue
+
+        distance = current_price - sma_price
+
+        # For LONG: breakout above SMA is bullish
+        # For SHORT: breakout below SMA is bearish
+        if direction.lower() == "long":
+            if distance > 0:  # Price above SMA (bullish)
+                score = score_breakout_strength(distance)
+                if score > 0:
+                    breakouts.append({
+                        "period": period,
+                        "sma_price": round(sma_price, 2),
+                        "distance": round(distance, 2),
+                        "score": score,
+                        "type": "bullish",
+                    })
+                    total_score += score
+        else:  # SHORT
+            if distance < 0:  # Price below SMA (bearish)
+                score = score_breakout_strength(distance)
+                if score > 0:
+                    breakouts.append({
+                        "period": period,
+                        "sma_price": round(sma_price, 2),
+                        "distance": round(distance, 2),
+                        "score": score,
+                        "type": "bearish",
+                    })
+                    total_score += score
+
+    return {
+        "breakout_score": round(total_score, 1),
+        "breakouts": breakouts,
+    }
+
+
+def detect_sma_crosses(closes: list, periods: list = [5, 20, 50]) -> dict:
+    """
+    Detect golden cross (bullish) and death cross (bearish) signals.
+
+    Golden Cross: Fast SMA > Medium/Slow SMA
+    Death Cross: Fast SMA < Medium/Slow SMA
+
+    Returns:
+        {
+            "golden_cross": bool,
+            "death_cross": bool,
+            "cross_type": "golden" | "death" | "none",
+            "smas": {"sma_5": ..., "sma_20": ..., "sma_50": ...}
+        }
+    """
+    if len(closes) < max(periods):
+        return {
+            "golden_cross": False,
+            "death_cross": False,
+            "cross_type": "none",
+            "smas": {},
+        }
+
+    # Compute current SMAs
+    smas = compute_sma_list(closes, periods)
+    sma_fast = smas.get(f"sma_{periods[0]}", 0)
+    sma_med = smas.get(f"sma_{periods[1]}", 0) if len(periods) > 1 else 0
+    sma_slow = smas.get(f"sma_{periods[2]}", 0) if len(periods) > 2 else 0
+
+    if sma_fast <= 0 or sma_med <= 0 or sma_slow <= 0:
+        return {
+            "golden_cross": False,
+            "death_cross": False,
+            "cross_type": "none",
+            "smas": smas,
+        }
+
+    # Check for crosses
+    golden_cross = sma_fast > sma_med and sma_med > sma_slow
+    death_cross = sma_fast < sma_med and sma_med < sma_slow
+
+    cross_type = "golden" if golden_cross else ("death" if death_cross else "none")
+
+    return {
+        "golden_cross": golden_cross,
+        "death_cross": death_cross,
+        "cross_type": cross_type,
+        "smas": smas,
+    }
 
 
 def compute_tf_trend(bars: list, tf: str) -> dict:
     """
-    Compute EMA-based trend for a single timeframe.
-    Returns {"trend": "bull"|"bear"|"unknown", "ema": float, "close": float}
+    Compute SMA-based trend for a single timeframe (15m, 5m).
+    Includes cross detection and SMA positioning.
+    Returns {
+        "trend": "bull"|"bear"|"unknown",
+        "cross_type": "golden"|"death"|"none",
+        "sma_fast": float,
+        "smas": {...},
+        "close": float
+    }
     """
-    period = EMA_PERIODS.get(tf, 50)
+    periods = SMA_PERIODS.get(tf, [5, 20, 50])
+    if not periods:
+        return {
+            "trend": "unknown",
+            "cross_type": "none",
+            "sma_fast": 0.0,
+            "smas": {},
+            "close": 0.0,
+        }
+
     closes = [b["close"] for b in bars if is_globex(b["timestamp"])]
     if len(closes) < 10:
-        return {"trend": "unknown", "ema": 0.0, "close": 0.0}
-    ema   = compute_ema(closes, min(period, len(closes)))
+        return {
+            "trend": "unknown",
+            "cross_type": "none",
+            "sma_fast": 0.0,
+            "smas": {},
+            "close": 0.0,
+        }
+
+    # Detect crosses
+    crosses = detect_sma_crosses(closes, periods)
     close = closes[-1]
+
+    # Determine trend from crosses and price position
+    if crosses["golden_cross"]:
+        trend = "bull"
+    elif crosses["death_cross"]:
+        trend = "bear"
+    else:
+        # Default: check if price above fastest SMA
+        sma_fast = crosses["smas"].get(f"sma_{periods[0]}", 0)
+        trend = "bull" if close > sma_fast else "bear"
+
     return {
-        "trend": "bull" if close > ema else "bear",
-        "ema":   round(ema, 2),
+        "trend": trend,
+        "cross_type": crosses["cross_type"],
+        "sma_fast": round(crosses["smas"].get(f"sma_{periods[0]}", 0), 2),
+        "smas": crosses["smas"],
         "close": round(close, 2),
     }
 
@@ -117,6 +316,176 @@ def count_tf_alignment(trends: dict, direction: str) -> dict:
         "aligned": sum(detail.values()),
         "total":   len(detail),
         "detail":  detail,
+    }
+
+
+# ── Intraday SMA Magnet Levels (15m, 5m) ──────────────
+def compute_intraday_sma_levels(bars: list, current_price: float, tf: str = "15m", direction: str = "long") -> dict:
+    """
+    Compute 15m/5m SMA levels and score them as magnet support/resistance.
+    Also detects golden/death crosses and SMA breakouts with strength scoring.
+
+    Returns:
+        {
+            "smas": {"sma_5": ..., "sma_20": ..., "sma_50": ...},
+            "magnet_score": 0.0-2.0,
+            "breakout_score": 0.0-4.5,
+            "nearest_sma": {"period": 5, "price": ..., "distance": ...},
+            "hits": [...],
+            "crosses": {"golden_cross": bool, "death_cross": bool, "cross_type": str},
+            "breakouts": [...]  # Detected breakouts with strength
+        }
+    """
+    from src.data.config import SMA_PERIODS, DAILY_SMA_MAGNET_PROXIMITY
+
+    closes = [b["close"] for b in bars if bars]
+    periods = SMA_PERIODS.get(tf, [5, 20, 50])
+
+    if len(closes) < max(periods):
+        return {
+            "smas": {},
+            "magnet_score": 0,
+            "breakout_score": 0,
+            "nearest_sma": None,
+            "hits": [],
+            "crosses": {
+                "golden_cross": False,
+                "death_cross": False,
+                "cross_type": "none",
+            },
+            "breakouts": [],
+        }
+
+    # Compute SMAs and detect crosses
+    smas = compute_sma_list(closes, periods)
+    crosses = detect_sma_crosses(closes, periods)
+    breakouts = detect_sma_breakouts(bars, smas, direction)
+
+    # Find SMAs price is near (magnet levels)
+    hits = []
+    nearest_sma = None
+    nearest_distance = float('inf')
+
+    for period in periods:
+        sma_price = smas.get(f"sma_{period}", 0)
+        if sma_price <= 0:
+            continue
+
+        distance = abs(current_price - sma_price)
+
+        # Track nearest
+        if distance < nearest_distance:
+            nearest_distance = distance
+            nearest_sma = {"period": period, "price": sma_price, "distance": round(distance, 2)}
+
+        # Record if within magnet proximity
+        if distance <= DAILY_SMA_MAGNET_PROXIMITY:
+            hits.append({
+                "type": f"{tf}_sma",
+                "period": period,
+                "price": sma_price,
+                "distance": round(distance, 2),
+            })
+
+    # Calculate magnet score
+    magnet_score = 0.0
+    for hit in hits:
+        dist = hit["distance"]
+        if dist < 3:
+            magnet_score += 2.0
+        elif dist < 7:
+            magnet_score += 1.0
+        elif dist <= DAILY_SMA_MAGNET_PROXIMITY:
+            magnet_score += 0.5
+
+    return {
+        "smas": smas,
+        "magnet_score": round(magnet_score, 1),
+        "breakout_score": breakouts.get("breakout_score", 0),
+        "nearest_sma": nearest_sma,
+        "hits": hits,
+        "crosses": crosses,
+        "breakouts": breakouts.get("breakouts", []),
+    }
+
+
+# ── Daily SMA Magnet Levels ──────────────────────────────
+def compute_daily_sma_levels(bars_1d: list, current_price: float, direction: str = "long") -> dict:
+    """
+    Compute daily SMAs and score them as magnet support/resistance levels.
+    Also detects SMA breakouts with strength scoring.
+
+    Returns:
+        {
+            "smas": {"sma_5": 100.0, "sma_20": 101.5, ...},
+            "magnet_score": 0.0-2.0,
+            "breakout_score": 0.0-7.5,
+            "nearest_sma": {"period": 20, "price": 101.5, "distance": 0.5},
+            "hits": [...],
+            "breakouts": [...]  # Detected breakouts with strength
+        }
+    """
+    from src.data.config import SMA_PERIODS, DAILY_SMA_MAGNET_PROXIMITY
+
+    closes = [b["close"] for b in bars_1d if bars_1d]
+    if len(closes) < 200:  # Need at least 200 bars for longest SMA
+        return {
+            "smas": {},
+            "magnet_score": 0,
+            "breakout_score": 0,
+            "nearest_sma": None,
+            "hits": [],
+            "breakouts": [],
+        }
+
+    periods = SMA_PERIODS.get("1d", [5, 20, 50, 100, 200])
+    smas = compute_sma_list(closes, periods)
+    breakouts = detect_sma_breakouts(bars_1d, smas, direction)
+
+    # Find SMAs price is near (magnet levels)
+    hits = []
+    nearest_sma = None
+    nearest_distance = float('inf')
+
+    for period in periods:
+        sma_price = smas.get(f"sma_{period}", 0)
+        if sma_price <= 0:
+            continue
+
+        distance = abs(current_price - sma_price)
+
+        # Track nearest
+        if distance < nearest_distance:
+            nearest_distance = distance
+            nearest_sma = {"period": period, "price": sma_price, "distance": round(distance, 2)}
+
+        # Record if within magnet proximity
+        if distance <= DAILY_SMA_MAGNET_PROXIMITY:
+            hits.append({
+                "type": "daily_sma",
+                "period": period,
+                "price": sma_price,
+                "distance": round(distance, 2),
+            })
+
+    # Calculate magnet score (similar to SPY pivot scoring)
+    magnet_score = 0.0
+    for hit in hits:
+        dist = hit["distance"]
+        if dist < 3:  # Very close
+            magnet_score += 2.0
+        elif dist < 7:  # Close
+            magnet_score += 1.0
+        elif dist <= DAILY_SMA_MAGNET_PROXIMITY:  # Medium
+            magnet_score += 0.5
+
+    return {
+        "smas": smas,
+        "magnet_score": round(magnet_score, 1),
+        "breakout_score": breakouts.get("breakout_score", 0),
+        "nearest_sma": nearest_sma,
+        "hits": hits,
+        "breakouts": breakouts.get("breakouts", []),
     }
 
 
@@ -273,25 +642,24 @@ def build_mtf_context(mtf_bars: dict, trigger_tf: str) -> dict:
     """
     Build full multi-timeframe context.
 
-    mtf_bars  : {"1h": [...], "30m": [...], "15m": [...], "5m": [...]}
+    mtf_bars  : {"1d": [...], "15m": [...], "5m": [...]}
     trigger_tf: which TF's bar close triggered this call ("15m" or "5m")
 
     Returns a rich context dict ready for Claude and Discord,
     or empty dict if no sweep or insufficient alignment.
     """
-    bars_1h  = mtf_bars.get("1h",  [])
-    bars_30m = mtf_bars.get("30m", [])
+    bars_1d  = mtf_bars.get("1d",  [])
     bars_15m = mtf_bars.get("15m", [])
     bars_5m  = mtf_bars.get("5m",  [])
 
-    if not bars_1h or not bars_5m:
+    if not bars_1d or not bars_5m:
         return {}
 
     # ── Trends per TF ─────────────────────────────────────
     trends = compute_all_trends(mtf_bars)
 
-    # ── Session levels from 1H (most meaningful H/L) ──────
-    session_levels = compute_session_levels(bars_1h)
+    # ── Session levels from 1D (daily H/L) ────────────────
+    session_levels = compute_session_levels(bars_1d)
 
     # ── Sweep on trigger TF ───────────────────────────────
     trigger_bars   = mtf_bars.get(trigger_tf, [])
@@ -306,13 +674,19 @@ def build_mtf_context(mtf_bars: dict, trigger_tf: str) -> dict:
     if alignment["aligned"] < MIN_TF_ALIGNMENT:
         return {"insufficient_alignment": True, "alignment": alignment, "sweep": sweep}
 
-    # ── Market data (use 5m for VWAP/volume, 30m for POC) ─
+    # ── Market data (use 5m for VWAP/volume, 1d for POC) ─
     current_price  = trigger_bars[-1]["close"] if trigger_bars else 0.0
     vwap           = compute_vwap(bars_5m)
-    session_pocs   = compute_session_pocs(bars_30m)
+    session_pocs   = compute_session_pocs(bars_1d)
     poc_primary    = session_pocs[0]["poc"] if session_pocs else 0.0
 
     vol_stats      = compute_volume_stats(trigger_bars)
+
+    # ── Intraday SMA Magnet Levels (15m & 5m) ─────────────
+    intraday_15m   = compute_intraday_sma_levels(bars_15m, current_price, "15m", direction)
+    intraday_5m    = compute_intraday_sma_levels(bars_5m, current_price, "5m", direction)
+    intraday_sma_score = intraday_15m.get("magnet_score", 0) + intraday_5m.get("magnet_score", 0)
+    intraday_breakout_score = intraday_15m.get("breakout_score", 0) + intraday_5m.get("breakout_score", 0)
 
     # ── Distance calculations ─────────────────────────────
     vwap_dist  = abs(current_price - vwap)        if vwap        else 999
@@ -322,7 +696,7 @@ def build_mtf_context(mtf_bars: dict, trigger_tf: str) -> dict:
     near_vwap  = vwap_dist <= VWAP_PROXIMITY_PTS
 
     # ── Core conditions ───────────────────────────────────
-    htf_trend      = trends["1h"]["trend"]
+    htf_trend      = trends.get("1d", {}).get("trend", "unknown")
     htf_aligned    = (direction == "short" and htf_trend == "bear") or \
                      (direction == "long"  and htf_trend == "bull")
 
@@ -337,6 +711,11 @@ def build_mtf_context(mtf_bars: dict, trigger_tf: str) -> dict:
         "rth_session":       is_rth(trigger_bars[-1]["timestamp"]),
     }
     score = sum(1 for v in conditions.values() if v)
+
+    # ── Daily SMA Magnet Levels ───────────────────────────
+    daily_sma = compute_daily_sma_levels(bars_1d, current_price, direction)
+    daily_sma_score = daily_sma.get("magnet_score", 0)
+    daily_breakout_score = daily_sma.get("breakout_score", 0)
 
     # ── SPX/SPY levels ────────────────────────────────────
     levels_ctx     = analyze_levels(current_price)
@@ -357,8 +736,10 @@ def build_mtf_context(mtf_bars: dict, trigger_tf: str) -> dict:
     sweep_size = sweep.get("sweep_size", 20)  # Points beyond level
 
     # Confluence score drives distance multiplier (0.5x to 2.0x)
-    # Lower scores (< 5) use 0.5x, higher scores (10+) use 2.0x
-    confluence_raw = score + ext_score
+    # Score = base + ext + daily_sma + daily_breakout + intraday_sma + intraday_breakout
+    confluence_raw = (score + ext_score +
+                     daily_sma_score + daily_breakout_score +
+                     intraday_sma_score + intraday_breakout_score)
     score_multiplier = 0.5 + (confluence_raw / 10.0) * 1.5  # Maps 0→0.5, 10→2.0
     score_multiplier = min(2.0, max(0.5, score_multiplier))  # Clamp to [0.5, 2.0]
 
@@ -407,10 +788,19 @@ def build_mtf_context(mtf_bars: dict, trigger_tf: str) -> dict:
         # Scoring
         "conditions":       conditions,
         "ext_conditions":   ext_conditions,
-        "confluence_score": score + ext_score,
+        "confluence_score": confluence_raw,
         "base_score":       score,
         "ext_score":        ext_score,
+        "daily_sma_score":  daily_sma_score,
+        "daily_breakout_score": daily_breakout_score,
+        "intraday_sma_score": intraday_sma_score,
+        "intraday_breakout_score": intraday_breakout_score,
         "total_conditions": len(conditions) + len(ext_conditions),
+
+        # SMA Levels (Support/Resistance Magnet + Breakouts)
+        "daily_sma":        daily_sma,
+        "intraday_15m":     intraday_15m,
+        "intraday_5m":      intraday_5m,
 
         # SPX/SPY
         "levels_ctx":       levels_ctx,

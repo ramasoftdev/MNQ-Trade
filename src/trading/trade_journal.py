@@ -149,19 +149,21 @@ class TradeJournal:
             cursor.execute(
                 """
                 INSERT INTO alerts (
-                    timestamp, date, direction, entry_price, trigger_tf,
+                    timestamp, date, direction, entry_price, stop_loss, take_profit, trigger_tf,
                     confluence_score, base_score, ext_score, spy_magnet_score,
                     sweep_confirmed, reversal_candle, near_poc, vwap_confluence,
                     tf_1h_aligned, tf_3plus_aligned, rth_session,
                     current_vwap, current_poc, spy_price,
                     probability, assessment, confidence, reasoning, trade_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     ts,
                     date,
                     alert_data.get("direction"),
                     alert_data.get("current_price", 0),
+                    alert_data.get("stop_loss", 0),
+                    alert_data.get("take_profit", 0),
                     alert_data.get("trigger_tf", "?"),
                     alert_data.get("confluence_score", 0),
                     alert_data.get("base_score", 0),

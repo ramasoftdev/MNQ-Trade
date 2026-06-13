@@ -12,6 +12,16 @@ This directory contains custom Claude Code skills for the MNQ Trading Agent.
   - Shows startup logs
   - Confirms market data is loading
 
+### 1.5. **run-monitor**
+- **Trigger**: `ctrl+shift+m` or `/run-monitor`
+- **Purpose**: Start the background SL/TP monitor
+- **What it does**:
+  - Begins continuous monitoring of pending alerts
+  - Every 5 seconds: fetches current price, checks against SL/TP
+  - Auto-records exits when levels are hit
+  - Sends Discord notifications for TP_HIT / SL_HIT
+  - Runs 24/7 during market hours (8:30 AM - 4 PM CT)
+
 ### 2. **test-discord**
 - **Trigger**: `ctrl+shift+t` or `/test-discord`
 - **Purpose**: Verify Discord webhook is working
@@ -137,6 +147,7 @@ Add to `.claude/settings.json`:
 ├── skills/
 │   ├── README.md          # This file
 │   ├── run_agent.py       # Skill: Launch agent
+│   ├── run_monitor.py     # Skill: Start SL/TP monitor
 │   ├── test_discord.py    # Skill: Test webhook
 │   ├── view_report.py     # Skill: Open daily report
 │   └── analyze_alerts.py  # Skill: Analyze today's alerts

@@ -6,6 +6,11 @@
       "description": "Launch MNQ agent"
     },
     {
+      "key": "ctrl+shift+m",
+      "command": "run-monitor",
+      "description": "Start SL/TP monitor"
+    },
+    {
       "key": "ctrl+shift+t",
       "command": "test-discord",
       "description": "Test Discord webhook"

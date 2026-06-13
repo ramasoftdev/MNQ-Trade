@@ -44,21 +44,23 @@ GLOBEX_CLOSE_HOUR   = 16
 
 # ── Multi-timeframe settings ──────────────────────────────────
 TIMEFRAMES = {
-    "1h":  {"elementSize": 60, "maxlen": 750,  "history_days": 30},
-    "30m": {"elementSize": 30, "maxlen": 1500, "history_days": 21},
-    "15m": {"elementSize": 15, "maxlen": 2000, "history_days": 21},
-    "5m":  {"elementSize": 5,  "maxlen": 3000, "history_days": 14},
+    "1d":  {"elementSize": 1440, "maxlen": 250, "history_days": 250},  # Daily bars
+    "15m": {"elementSize": 15,   "maxlen": 2000, "history_days": 21},
+    "5m":  {"elementSize": 5,    "maxlen": 3000, "history_days": 14},
 }
 
 TRIGGER_TIMEFRAMES  = ["15m", "5m"]
 MIN_TF_ALIGNMENT    = 3
 
-EMA_PERIODS = {
-    "1h":  50,
-    "30m": 100,
-    "15m": 100,
-    "5m":  200,
+# SMA Periods for trend detection & support/resistance
+SMA_PERIODS = {
+    "1d":  [5, 20, 50, 100, 200],      # Daily: Multiple SMAs for support/resistance magnet levels
+    "15m": [5, 20, 50],                # 15m: Trend confirmation
+    "5m":  [5, 20, 50],                # 5m: Ultra-short trend
 }
+
+# Daily SMA magnet scoring (distance-based like SPY pivots)
+DAILY_SMA_MAGNET_PROXIMITY = 15        # Points away to count as support/resistance magnet level
 
 # ── Alert cooldown ────────────────────────────────────────────
 ALERT_COOLDOWN_SECS = 300

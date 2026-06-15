@@ -37,10 +37,9 @@ UNIT_MINUTE = 2
 
 # Poll interval per timeframe (seconds)
 POLL_INTERVAL = {
-    "5m":  10,
-    "15m": 30,
-    "30m": 60,
-    "1h":  120,
+    "1d":  3600,   # Poll daily bars every hour
+    "15m": 30,     # Poll 15m bars every 30 seconds
+    "5m":  10,     # Poll 5m bars every 10 seconds
 }
 
 

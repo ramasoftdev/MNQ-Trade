@@ -35,6 +35,17 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 FINNHUB_API_KEY     = os.getenv("FINNHUB_API_KEY", "")
 FINNHUB_BASE_URL    = "https://finnhub.io/api/v1"
 
+
+def get_finnhub_client():
+    """Get Finnhub client for fetching real-time prices."""
+    try:
+        import finnhub
+        return finnhub.Client(api_key=FINNHUB_API_KEY)
+    except ImportError:
+        raise RuntimeError("finnhub package not installed. Run: pip install finnhub")
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialize Finnhub client: {e}")
+
 # ── Session boundaries ────────────────────────────────────────
 TIMEZONE            = "America/Chicago"
 RTH_START           = (9, 30)

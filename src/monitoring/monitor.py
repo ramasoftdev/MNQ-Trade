@@ -24,8 +24,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.trading.trade_journal import TradeJournal
-from src.data.config import get_finnhub_client, DISCORD_WEBHOOK_URL
-from src.reporting.discord_formatter import send_tp_sl_alert
+from src.data.config import DISCORD_WEBHOOK_URL
 
 # MVC Imports
 from src.controllers.trade_controller import TradeController

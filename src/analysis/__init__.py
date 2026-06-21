@@ -1,6 +1,11 @@
-"""Analysis module — Sweep detection, trends, probability assessment."""
+"""Analysis module — VWAP/POC system, probability assessment."""
 
-from src.analysis.context_analyzer import build_mtf_context
+# NOTE: context_analyzer is deprecated (old sweep-based system)
+# Use new VWAP/POC analyzers instead:
+# - vwap_analyzer
+# - ma_analyzer
+# - volume_analyzer
+
 from src.analysis.probability_engine import get_probability
 
-__all__ = ["build_mtf_context", "get_probability"]
+__all__ = ["get_probability"]

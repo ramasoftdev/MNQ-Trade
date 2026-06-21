@@ -35,17 +35,6 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 FINNHUB_API_KEY     = os.getenv("FINNHUB_API_KEY", "")
 FINNHUB_BASE_URL    = "https://finnhub.io/api/v1"
 
-
-def get_finnhub_client():
-    """Get Finnhub client for fetching real-time prices."""
-    try:
-        import finnhub
-        return finnhub.Client(api_key=FINNHUB_API_KEY)
-    except ImportError:
-        raise RuntimeError("finnhub package not installed. Run: pip install finnhub")
-    except Exception as e:
-        raise RuntimeError(f"Failed to initialize Finnhub client: {e}")
-
 # ── Session boundaries ────────────────────────────────────────
 TIMEZONE            = "America/Chicago"
 RTH_START           = (9, 30)
@@ -60,29 +49,54 @@ TIMEFRAMES = {
     "5m":  {"elementSize": 5,    "maxlen": 3000, "history_days": 14},
 }
 
-TRIGGER_TIMEFRAMES  = ["15m", "5m"]
-MIN_TF_ALIGNMENT    = 3
+TRIGGER_TIMEFRAMES  = ["5m"]  # Primary entry on 5m
+CONFIRMATION_TF     = "15m"   # Confirmation on 15m
 
-# SMA Periods for trend detection & support/resistance
-SMA_PERIODS = {
-    "1d":  [5, 20, 50, 100, 200],      # Daily: Multiple SMAs for support/resistance magnet levels
-    "15m": [5, 20, 50],                # 15m: Trend confirmation
-    "5m":  [5, 20, 50],                # 5m: Ultra-short trend
+# ── NEW SYSTEM: VWAP/POC Configuration ────────────────────────
+# Entry Signal: 5m VWAP bounce with volume confirmation
+# Confirmation: 15m MA alignment (bullish or bearish)
+# Context: Daily MA levels for macro analysis
+
+# MA Periods for all timeframes
+MA_PERIODS = {
+    "5m":  [5, 20, 50],        # Entry timeframe MAs
+    "15m": [5, 20, 50],        # Confirmation timeframe MAs
+    "1d":  [5, 20, 50]         # Daily macro context
 }
 
-# Daily SMA magnet scoring (distance-based like SPY pivots)
-DAILY_SMA_MAGNET_PROXIMITY = 15        # Points away to count as support/resistance magnet level
+# VWAP Bounce Detection Settings
+VWAP_TOLERANCE_PTS        = 5.0      # Price within X pts of VWAP to count as "near"
+VWAP_REVERSAL_BODY_RATIO  = 0.5      # Reversal candle body must be 50%+ of range
+VWAP_BOUNCE_CONFIDENCE    = 60       # Minimum confidence for bounce (0-100)
+
+# Volume Settings
+VOLUME_LOOKBACK_BARS      = 5        # Bars to use for average volume
+VOLUME_SPIKE_MULTIPLIER   = 1.2      # Current volume > avg × 1.2 = spike
+POC_LOOKBACK_BARS         = 24       # Bars to analyze for POC calculation
+
+# MA Alignment & Support/Resistance
+MA_ALIGNMENT_TOLERANCE    = 2.0      # Distance between MAs to be considered "aligned"
+MA_SUPPORT_RESISTANCE_TOL = 15.0     # Price within X pts to classify as support/resistance
+
+# Confluence Scoring (VWAP/POC System)
+# Maximum possible: 10 points
+CONFLUENCE_THRESHOLD      = 6        # Minimum score to generate alert
+CONFLUENCE_MAX            = 10       # Maximum possible score
+
+# Confluence Score Breakdown:
+# VWAP bounce: +3 pts
+# Volume spike: +2 pts
+# 15m MA aligned (bullish/bearish): +2 pts
+# POC proximity: +1 pt
+# MA5 proximity (15m): +1 pt
+# ───────────────────────────────────
+# Total: 10 pts
 
 # ── Alert cooldown ────────────────────────────────────────────
 ALERT_COOLDOWN_SECS = 300
 
-# ── Market data thresholds ────────────────────────────────────
-VOLUME_AVG_BARS     = 20
-VOL_SPIKE_MULT      = 1.5  # Volume spike detection still computes, but NOT used in confluence scoring
-POC_PROXIMITY_PTS   = 5.0
-VWAP_PROXIMITY_PTS  = 3.0
+# ── Legacy settings (kept for compatibility) ─────────────────
 TICK_SIZE           = 0.25
-
 NUM_SESSIONS        = 10
 POC_SESSIONS        = 5
 
